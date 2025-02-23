@@ -18,7 +18,8 @@ Docker Image Puller 是一个方便的工具，用于从 Docker 仓库拉取镜�
 
 ## 截图：
 
-![用户界面截图](./jietu.png)
+![用户界面截图CLI](./截图.png)  
+![用户界面截图GUI](./jietu.png)
 
 
 ## 安装
