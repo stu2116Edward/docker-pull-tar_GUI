@@ -3,8 +3,12 @@ import sys
 import threading
 import tkinter as tk
 from tkinter import messagebox, scrolledtext
-from tkinter.ttk import Progressbar, Style, Combobox  # 导入Combobox
+from tkinter.ttk import Progressbar, Style, Combobox
 import logging
+
+# 假设命令行工具的逻辑已经被封装到一个函数中
+# 从 docker_image_puller 模块导入核心逻辑函数
+from docker_image_puller import pull_image_logic
 
 
 def resource_path(relative_path):
@@ -17,46 +21,33 @@ def resource_path(relative_path):
         base_path = os.path.abspath(".")
     return os.path.join(base_path, relative_path)
 
-# 导入命令行工具中的核心逻辑函数
-from docker_image_puller import pull_image_logic
 
 # 配置日志记录器
 logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s: %(message)s')
 logger = logging.getLogger(__name__)
 
+
 # 定义一个函数来运行命令行工具的逻辑
-def run_pull(image, registry, arch, log_text, layer_progress_bar, overall_progress_bar):
-    def log_callback(message):
-        log_text.config(state="normal")
-        log_text.insert(tk.END, message)
-        log_text.config(state="disabled")
-        log_text.see(tk.END)  # 自动滚动到底部
-
-    def update_layer_progress(value):
-        layer_progress_bar["value"] = value
-        layer_progress_bar.update()
-
-    def update_overall_progress(value):
-        overall_progress_bar["value"] = value
-        overall_progress_bar.update()
-
+def run_pull(image, registry, arch, log_callback, layer_progress_callback, overall_progress_callback):
     try:
         log_callback(f"开始拉取镜像：{image}\n")
+        # 调用命令行工具的逻辑
         pull_image_logic(
-            image, 
-            registry, 
-            arch, 
-            log_callback=log_callback, 
-            layer_progress_callback=update_layer_progress, 
-            overall_progress_callback=update_overall_progress
+            image,
+            registry,
+            arch,
+            log_callback=log_callback,
+            layer_progress_callback=layer_progress_callback,
+            overall_progress_callback=overall_progress_callback
         )
         log_callback("镜像拉取完成！\n")
     except Exception as e:
         log_callback(f"发生错误：{e}\n")
         logger.error(f"程序运行过程中发生异常: {e}")
     finally:
-        layer_progress_bar["value"] = 0  # 重置进度条
-        overall_progress_bar["value"] = 0  # 重置进度条
+        layer_progress_callback(0)  # 重置进度条
+        overall_progress_callback(0)  # 重置进度条
+
 
 # 定义 GUI 类
 class DockerPullerGUI:
@@ -141,8 +132,8 @@ class DockerPullerGUI:
 
         # 使用线程运行拉取逻辑，避免阻塞 GUI
         threading.Thread(
-            target=run_pull, 
-            args=(image, registry, arch, self.log_text, self.layer_progress_bar, self.overall_progress_bar)
+            target=run_pull,
+            args=(image, registry, arch, self.log_callback, self.update_layer_progress, self.update_overall_progress)
         ).start()
 
     def reset_fields(self):
@@ -161,6 +152,23 @@ class DockerPullerGUI:
         # 重置进度条
         self.layer_progress_bar["value"] = 0
         self.overall_progress_bar["value"] = 0
+
+    def log_callback(self, message):
+        """更新日志区域的回调函数"""
+        self.log_text.config(state="normal")
+        self.log_text.insert(tk.END, message)
+        self.log_text.config(state="disabled")
+        self.log_text.see(tk.END)  # 自动滚动到底部
+
+    def update_layer_progress(self, value):
+        """更新当前层进度条的回调函数"""
+        self.layer_progress_bar["value"] = value
+        self.layer_progress_bar.update()
+
+    def update_overall_progress(self, value):
+        """更新总体进度条的回调函数"""
+        self.overall_progress_bar["value"] = value
+        self.overall_progress_bar.update()
 
 
 if __name__ == "__main__":
