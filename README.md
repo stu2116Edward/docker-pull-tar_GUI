@@ -96,6 +96,11 @@ python docker_image_puller.py -v
 python docker_image_puller.py -i alpine -a arm64 -r 1ms.run --debug
 ```
 
+#### 项目打包
+```
+pyinstaller -F -w -i favicon.ico docker_image_puller_gui.py --add-data "logo.ico;."
+```
+
 ## 内网 Docker 导入方法
 
 1. **拉取镜像并打包**  
