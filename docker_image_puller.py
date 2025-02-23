@@ -13,7 +13,6 @@ import urllib3
 import argparse
 import logging
 
-
 # 禁用 SSL 警告
 urllib3.disable_warnings()
 
@@ -28,7 +27,7 @@ def create_session():
     """创建带有重试和代理配置的请求会话"""
     session = requests.Session()
     retry_strategy = Retry(
-        total=3,
+        total=5,  # 增加重试次数
         backoff_factor=1,
         status_forcelist=[429, 500, 502, 503, 504],
     )
@@ -79,10 +78,12 @@ def fetch_manifest(session, registry, repository, tag, auth_head):
     """获取镜像清单"""
     try:
         url = f'https://{registry}/v2/{repository}/manifests/{tag}'
-        headers = ' '.join([f"-H '{key}: {value}'" for key, value in auth_head.items()])
-        curl_command = f"curl '{url}' {headers}"
-        logger.debug(f'获取镜像清单 CURL 命令: {curl_command}')
-        resp = session.get(url, headers=auth_head, verify=False, timeout=30)
+        headers = {
+            'Accept': 'application/vnd.docker.distribution.manifest.v2+json',
+            'Authorization': auth_head.get('Authorization', '')
+        }
+        logger.debug(f'获取镜像清单 CURL 命令: curl -H "Accept: application/vnd.docker.distribution.manifest.v2+json" -H "Authorization: {auth_head.get("Authorization")}" {url}')
+        resp = session.get(url, headers=headers, verify=False, timeout=30)
         resp.raise_for_status()
         return resp
     except requests.exceptions.RequestException as e:
@@ -105,10 +106,13 @@ def download_layers(session, registry, repository, layers, auth_head, imgdir, re
     try:
         config = resp_json['config']['digest']
         url = f'https://{registry}/v2/{repository}/blobs/{config}'
-        headers = ' '.join([f"-H '{key}: {value}'" for key, value in auth_head.items()])
+        headers = {
+            'Accept': 'application/vnd.docker.distribution.manifest.v2+json',
+            'Authorization': auth_head.get('Authorization', '')
+        }
         if log_callback:
             log_callback(f"[DEBUG] 下载配置文件 CURL 命令: {url}\n")
-        with session.get(url, headers=auth_head, verify=False, timeout=30, stream=True) as confresp:
+        with session.get(url, headers=headers, verify=False, timeout=30, stream=True) as confresp:
             confresp.raise_for_status()
             with open(f'{imgdir}/{config[7:]}.json', 'wb') as file:
                 shutil.copyfileobj(confresp.raw, file)
@@ -149,7 +153,7 @@ def download_layers(session, registry, repository, layers, auth_head, imgdir, re
         overall_progress = 0
 
         for index, layer in enumerate(layers, start=1):
-            ublob = layer['digest']
+            ublob = layer['digest']  # 不对 digest 值进行 URL 编码
             fake_layerid = hashlib.sha256((parentid + '\n' + ublob + '\n').encode('utf-8')).hexdigest()
             layerdir = f'{imgdir}/{fake_layerid}'
             os.makedirs(layerdir, exist_ok=True)
@@ -159,10 +163,13 @@ def download_layers(session, registry, repository, layers, auth_head, imgdir, re
 
             try:
                 url = f'https://{registry}/v2/{repository}/blobs/{ublob}'
-                headers = ' '.join([f"-H '{key}: {value}'" for key, value in auth_head.items()])
+                headers = {
+                    'Accept': 'application/vnd.docker.distribution.manifest.v2+json',
+                    'Authorization': auth_head.get('Authorization', '')
+                }
                 if log_callback:
                     log_callback(f"[DEBUG] 下载镜像层 CURL 命令: {url}\n")
-                with session.get(url, headers=auth_head, verify=False, timeout=30, stream=True) as bresp:
+                with session.get(url, headers=headers, verify=False, timeout=30, stream=True) as bresp:
                     bresp.raise_for_status()
                     total_size = int(bresp.headers.get('content-length', 0))
                     downloaded_size = 0
@@ -219,7 +226,6 @@ def download_layers(session, registry, repository, layers, auth_head, imgdir, re
     repo_tag = f'{"/".join(imgparts[:-1])}/{img}' if imgparts[:-1] else img
     with open(f'{imgdir}/repositories', 'w') as file:
         json.dump({repo_tag: {tag: fake_layerid}}, file)
-
 
 def create_image_tar(imgdir, repo, img, arch):
     """将镜像打包为 tar 文件"""
@@ -280,9 +286,12 @@ def pull_image_logic(image, registry, arch, debug=False, log_callback=None, laye
             digest = select_manifest(manifests, arch)
             if digest:
                 url = f'https://{registry}/v2/{repository}/manifests/{digest}'
-                headers = ' '.join([f"-H '{key}: {value}'" for key, value in auth_head.items()])
-                log_message(f'获取架构清单 CURL 命令: {headers}', level="DEBUG")
-                manifest_resp = session.get(url, headers=auth_head, verify=False, timeout=30)
+                headers = {
+                    'Accept': 'application/vnd.docker.distribution.manifest.v2+json',
+                    'Authorization': auth_head.get('Authorization', '')
+                }
+                log_message(f'获取架构清单 CURL 命令: {url}', level="DEBUG")
+                manifest_resp = session.get(url, headers=headers, verify=False, timeout=30)
                 manifest_resp.raise_for_status()
                 resp_json = manifest_resp.json()
 
@@ -307,7 +316,6 @@ def pull_image_logic(image, registry, arch, debug=False, log_callback=None, laye
     finally:
         cleanup_tmp_dir()
 
-
 def main():
     """主函数，用于命令行调用"""
     try:
@@ -331,7 +339,6 @@ def main():
     finally:
         input("按任意键退出程序...")
         sys.exit(0)
-
 
 if __name__ == '__main__':
     main()
